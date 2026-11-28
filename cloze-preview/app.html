@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#112b36">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="心電図リコール">
+  <title>心電図リコール</title>
+  <link rel="stylesheet" href="./study.css?v=4">
+  <link rel="manifest" href="./manifest.webmanifest?v=4">
+  <link rel="canonical" href="https://valizoj.github.io/ECGstudying/cloze-preview/app.html">
+  <link rel="apple-touch-icon" href="../icons/apple.png">
+  <script defer src="./deck.js?v=4"></script>
+  <script defer src="./image-meta.js?v=4"></script>
+  <script defer src="./layouts.js?v=4"></script>
+  <script defer src="./schema-images.js?v=4"></script>
+  <script defer src="./diagrams.js?v=4"></script>
+  <script defer src="./study.js?v=4"></script>
+</head>
+<body>
+  <header class="top"><div class="wrap top-row">
+    <h1>心電図リコール</h1>
+    <button id="home" class="top-button" hidden>出題設定</button>
+  </div></header>
+  <main class="wrap">
+    <section id="setup" aria-labelledby="setup-title">
+      <div id="stats" class="stats" aria-live="polite"></div>
+      <form id="setup-form" class="surface">
+        <h2 id="setup-title">出題設定</h2>
+        <div class="filters">
+          <label>分野<select id="category"></select></label>
+          <label>範囲<select id="scope"><option value="due">復習＋未学習</option><option value="weak">×の穴だけ</option><option value="all">全範囲</option></select></label>
+          <label>形式<select id="kind"><option value="auto">画像優先</option><option value="image">図・波形・表</option><option value="text">文章</option></select></label>
+          <label>枚数<select id="limit"><option value="10">10枚</option><option value="5">5枚</option><option value="all">全枚</option></select></label>
+        </div>
+        <label for="search" class="search-label">教材を指定（任意）</label>
+        <input id="search" type="search" placeholder="例：Wellens、049">
+        <div class="setup-actions">
+          <button type="submit" id="start" class="accent">学習を始める</button>
+          <span id="pool" class="muted" aria-live="polite"></span>
+        </div>
+      </form>
+      <details id="settings" class="surface tools">
+        <summary>画像・復習設定</summary>
+        <div class="tools-inner">
+          <p id="images-state" class="muted" role="status"></p>
+          <label>画像セット、または番号付き画像を読み込む
+            <input id="import-images" type="file" accept=".json,.png,.jpg,.jpeg,image/png,image/jpeg" multiple>
+          </label>
+          <label>復習ルール<select id="review-rule">
+            <option value="intensive">12/13直前（15分・2時間・6時間・12時間・1日）</option>
+            <option value="spaced">通常（1・3・7・14・30日）</option>
+            <option value="quick">添付版風（初回○で定着）</option>
+          </select></label>
+          <button id="edit" type="button">画像と穴を追加・編集</button>
+        </div>
+      </details>
+    </section>
+    <section id="run" hidden aria-label="出題中">
+      <div class="run-line"><span id="position"></span><span id="remaining"></span></div>
+      <div id="active-card" class="surface"></div>
+    </section>
+    <p id="storage-warning" class="muted" hidden>ブラウザの保存領域を使えないため、学習記録はこの画面を開いている間だけ保持します。</p>
+  </main>
+  <aside id="grading" class="grade-bar" hidden aria-label="穴の採点">
+    <div class="grade-inner">
+      <p id="grade-answer" aria-live="polite"></p>
+      <p id="grade-shortcut" class="muted">開いた穴をタップ　1回で○・すばやく2回で×</p>
+      <p id="grade-note" class="muted" hidden></p>
+      <div class="grade-actions">
+        <button id="close-grade" type="button">閉じる</button>
+        <button id="wrong" class="wrong" type="button">× 要復習</button>
+        <button id="correct" class="accent" type="button">○ 正解</button>
+      </div>
+    </div>
+  </aside>
+  <aside id="undo-bar" class="undo-bar" hidden><div class="grade-inner"><span role="status">採点を記録しました</span><button id="undo" type="button">取り消す</button></div></aside>
+  <dialog id="viewer" class="dialog"><div class="dialog-header"><h2 id="viewer-title">元画像</h2><form method="dialog"><button>閉じる</button></form></div><div id="viewer-body"></div></dialog>
+  <dialog id="editor" class="dialog"><div class="dialog-header"><h2>画像と穴を編集</h2><form method="dialog"><button>閉じる</button></form></div>
+    <div class="editor-fields">
+      <label>教材<select id="edit-source"></select></label>
+      <label id="edit-file-label">画像ファイル <input id="edit-file" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg"></label>
+      <label>タイトル <input id="edit-title" maxlength="100"></label>
+      <p id="editor-status" role="status" class="muted"></p>
+      <div id="edit-stage" hidden></div>
+      <div id="edit-holes"></div>
+      <button id="edit-save" class="accent" type="button" disabled>保存</button>
+    </div>
+  </dialog>
+</body>
+</html>

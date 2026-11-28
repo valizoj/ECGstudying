@@ -1,16 +1,28 @@
 "use strict";
 
 function studyDiagram(id) {
+  const generated = window.ECG_SCHEMA_IMAGES[id];
+  const source = generated && (window.ECG_PRIVATE_SCHEMAS?.[id] || generated.src);
+  if (source && id !== "005") {
+    const figure = el("figure", "", "study-figure");
+    const img = el("img");
+    img.src = source;
+    img.alt = generated.alt;
+    [img.width, img.height] = generated.size;
+    img.addEventListener("error", () => { figure.hidden = true; }, { once:true });
+    figure.append(img);
+    return figure;
+  }
   const labels = {
     "005": "V3のST低下とⅢのST上昇を同じ基準線から測る模式図",
     "024": "QRSのR波から逆行性P′までの位置を比較する模式図",
     "027": "R波の開始からS波の最深部までを測る模式図",
   };
   if (!labels[id]) return null;
-  const figure = el("figure", "", "study-figure");
+  const figure = el("figure", "", id === "005" ? "study-figure ratio-figure" : "study-figure");
   const canvas = el("canvas");
   const width = 420;
-  const height = id === "005" ? 102 : 83;
+  const height = id === "005" ? 140 : 83;
   canvas.width = width * 3;
   canvas.height = height * 3;
   canvas.setAttribute("role", "img");
@@ -75,20 +87,20 @@ function studyDiagram(id) {
 
   if (id === "005") {
     const examples = [
-      { down:.5, up:2, ratio:"0.25" },
-      { down:1.25, up:1.5, ratio:"0.83" },
-      { down:2, up:1, ratio:"2.00" },
+      { down:.5, up:2, ratio:"0.25", range:"0.5未満", sign:"＝" },
+      { down:1.25, up:1.5, ratio:"0.83", range:"0.5〜1.2", sign:"≒" },
+      { down:2, up:1, ratio:"2.00", range:"1.2超", sign:"＝" },
     ];
     const tabs = el("div", "", "diagram-tabs");
     tabs.setAttribute("aria-label", "測定位置と比の計算例");
     const measure = el("img");
-    measure.alt = "V3のST低下、ⅢのST上昇。矢印は基線からSTまでの偏位を示す。";
-    measure.src = window.ECG_FIGURE_005 || "./figures/005-st-measure.webp";
-    measure.width = 900;
-    measure.height = 300;
+    measure.alt = generated.alt;
+    measure.src = source;
+    [measure.width, measure.height] = generated.size;
     measure.addEventListener("error", () => { if (!measure.hidden) showRatio(1); }, { once:true });
     figure.prepend(measure);
-    const options = ["測る位置", "A", "B", "C"].map((title, index) => button(title, () => showRatio(index-1)));
+    const options = ["測る位置", ...examples.map(({ range }) => range)]
+      .map((title, index) => button(title, () => showRatio(index-1)));
     const formula = el("figcaption");
     const footer = el("div", "", "diagram-footer");
     tabs.append(...options);
@@ -103,17 +115,17 @@ function studyDiagram(id) {
         formula.textContent = "破線＝基線";
         return;
       }
-      const { down, up, ratio } = examples[index];
+      const { down, up, ratio, range, sign } = examples[index];
       g.clearRect(0,0,width,height);
-      const baseline = 52;
+      const baseline = 66;
       const ratioLeads = [
-        [9,"V3",baseline + down * 14,"#006459"],
-        [219,"Ⅲ",baseline - up * 14,"#a04532"],
+        [9,"V3",baseline + down * 18,"#145eaa",down],
+        [219,"Ⅲ",baseline - up * 18,"#a04532",up],
       ];
-      for (const [x,name,st,color] of ratioLeads) {
-        label(name, x+2, 17);
+      for (const [x,name,st,color,value] of ratioLeads) {
+        label(name, x+2, 21, "#173541", 17);
         guide(x,baseline,x+184,baseline);
-        const s = Math.max(baseline + 11, st + 6);
+        const s = Math.max(baseline + 11, st + 7);
         const t = Math.min(baseline-9, st-12);
         trace(x, baseline, [
           [x+16,baseline],
@@ -127,11 +139,15 @@ function studyDiagram(id) {
           [x+126,st,x+133,t,x+143,t],
           [x+153,t,x+158,baseline,x+172,baseline], [x+184,baseline],
         ]);
+        g.globalAlpha = .12;
+        g.fillStyle = color;
+        g.fillRect(x+91,Math.min(st,baseline),30,Math.abs(st-baseline));
+        g.globalAlpha = 1;
         dot(x+91,st,color);
         arrow(x+105,baseline,x+105,st,color);
-        label(name === "V3" ? "ST低下" : "ST上昇", x+91, 95, color, 14);
+        label((name === "V3" ? "ST低下 " : "ST上昇 ") + value + " mm", x+58, 129, color, 15);
       }
-      formula.textContent = down + " ÷ " + up + " ≈ " + ratio;
+      formula.textContent = down + " ÷ " + up + " " + sign + " " + ratio + "（" + range + "）";
       canvas.setAttribute("aria-label", labels[id] + "。低下 " + down + "、上昇 " + up + "、比 " + ratio + "。");
     }
     showRatio(-1);

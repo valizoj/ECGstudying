@@ -12,7 +12,7 @@ const reviewMinutes = {
   intensive: [15, 120, 360, 720, 1440],
   spaced: [1440, 4320, 10080, 20160, 43200],
 };
-const doubleTapMs = 330;
+const doubleTapMs = 400;
 const bindings = [];
 let records = read(reviewKey, {});
 let custom = read(customKey, {});
@@ -207,7 +207,12 @@ function tapHole(hole, trigger) {
     grade("again");
     return;
   }
-  pendingTap = { timer:setTimeout(() => grade("good"), doubleTapMs) };
+  const ticket = ticketNow();
+  pendingTap = { timer:setTimeout(() => {
+    if (activeHole === hole && ticketNow() === ticket) grade("good");
+    else cancelTap();
+  }, doubleTapMs) };
+  updateTapFeedback();
 }
 
 function makeHole(hole, presentation, number) {
@@ -412,6 +417,7 @@ function updateBars() {
   $("grading").hidden = !activeHole;
   $("undo-bar").hidden = activeHole || !lastGrade;
   document.body.classList.toggle("has-grader", Boolean(activeHole));
+  updateTapFeedback();
   if (!activeHole) return;
   $("grade-answer").textContent =
     (activeHole.cue ? activeHole.cue + "　" : "") + activeHole.answer;
@@ -426,6 +432,12 @@ function updateBars() {
   const low = activeTrigger && activeTrigger.getBoundingClientRect().bottom > innerHeight - height - 8;
   $("grading").classList.toggle("dock-top", Boolean(low));
   $("undo-bar").classList.toggle("dock-top", Boolean(low));
+}
+
+function updateTapFeedback() {
+  $("grade-shortcut").textContent = pendingTap
+    ? "○を記録中。続けてもう1回タップで×"
+    : "開いた穴をタップ　1回で○・すばやく2回で×";
 }
 
 function grade(result) {
@@ -811,5 +823,5 @@ restoreImages().catch(() => {});
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !session) updateSetup(); });
 setInterval(() => { if (!session && !document.hidden && !$("settings").open) updateSetup(); }, 30_000);
 if ("serviceWorker" in navigator && location.protocol !== "file:" && !window.ECG_PRIVATE_IMAGES) {
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=4", { updateViaCache:"none" }).catch(() => {});
 }

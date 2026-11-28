@@ -117,3 +117,9 @@ body.has-grader{padding-bottom:calc(16rem + env(safe-area-inset-bottom))}
 .hole,.hole-pickers button{touch-action:manipulation}
 .hole[data-state=opened]{cursor:pointer}
 .grade-bar.dock-top,.undo-bar.dock-top{inset:0 0 auto;padding-top:calc(.4rem + env(safe-area-inset-top));padding-bottom:.45rem;border-top:0;border-bottom:1px solid #b5cece;box-shadow:0 4px 20px #102a3514}
+.ratio-figure .diagram-footer{display:block;margin:.12rem .1rem .2rem}
+.ratio-figure .diagram-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.24rem;margin-top:.2rem}
+.ratio-figure .diagram-tabs button{padding:.18rem .1rem;white-space:nowrap;font-size:.8rem;min-height:36px}
+.ratio-figure figcaption{font-weight:650;min-height:1.35em}
+.study-figure img{object-fit:contain}
+.undo-bar.dock-top{inset:calc(3.45rem + env(safe-area-inset-top)) 0 auto;padding-top:.4rem}

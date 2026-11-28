@@ -3,7 +3,7 @@
   "name": "心電図リコール",
   "short_name": "心電図リコール",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
   "theme_color": "#112b36",
