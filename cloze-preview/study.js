@@ -5,15 +5,21 @@ const baseDeck = window.ECG_CLOZE;
 const metadata = window.ECG_IMAGE_META;
 const imageSources = new Map(Object.entries(window.ECG_PRIVATE_IMAGES || {}));
 const reviewKey = "ecg.cloze.records.v2";
-const ruleKey = "ecg.cloze.rule.v2";
+const ruleKey = "ecg.cloze.rule.v3";
 const customKey = "ecg.cloze.custom.v2";
-const day = 86_400_000;
-const intervals = [1, 3, 7, 14, 30];
+const minute = 60_000;
+const reviewMinutes = {
+  intensive: [15, 120, 360, 720, 1440],
+  spaced: [1440, 4320, 10080, 20160, 43200],
+};
+const doubleTapMs = 330;
 const bindings = [];
 let records = read(reviewKey, {});
 let custom = read(customKey, {});
 let session = null;
 let activeHole = null;
+let activeTrigger = null;
+let pendingTap = null;
 let lastGrade = null;
 let editorDraft = null;
 let dbPromise;
@@ -66,6 +72,8 @@ function variants(card, kind) {
   const written = text.length ? [{ card, mode: "text", group: 0, holes: text }] : [];
   if (kind === "image") return images;
   if (kind === "text") return written;
+  if (card.id === "005") return [...written, ...images.filter((ticket) =>
+    ticket.holes.some((hole) => records[keyFor(ticket, hole)]?.attempts))];
   return images.length ? [...images, ...written.filter((ticket) =>
     ticket.holes.some((hole) => records[keyFor(ticket, hole)]?.attempts))] : written;
 }
@@ -75,10 +83,13 @@ function keyFor(ticket, hole) {
 }
 
 function scheduled(record) {
-  const quick = $("review-rule").value === "quick";
+  const rule = $("review-rule").value;
+  const quick = rule === "quick";
   if (quick && (record.firstCorrect || record.streak >= 3)) return Infinity;
   if (record.result === "again") return record.at;
-  return record.at + day * intervals[Math.min(record.streak, intervals.length) - 1];
+  const intervals = reviewMinutes[rule] || reviewMinutes.spaced;
+  const level = Math.max(1, Math.min(record.streak, intervals.length));
+  return record.at + minute * intervals[level - 1];
 }
 
 function matchesScope(ticket, hole, scope) {
@@ -108,7 +119,7 @@ function makePool() {
     return { ...ticket, target, rank };
   }).filter((ticket) => ticket.target.length);
   return tickets.sort((a,b) => a.rank-b.rank || a.group-b.group
-    || Number(a.mode === "text")-Number(b.mode === "text"));
+    || Number(a.mode === "text" && a.card.id !== "005")-Number(b.mode === "text" && b.card.id !== "005"));
 }
 
 function updateSetup() {
@@ -152,8 +163,10 @@ function begin(event) {
 }
 
 function home() {
+  cancelTap();
   session = null;
   activeHole = null;
+  activeTrigger = null;
   lastGrade = null;
   $("setup").hidden = false;
   $("run").hidden = true;
@@ -176,11 +189,29 @@ function place(node, rect) {
   node.style.height = (bottom - top) + "%";
 }
 
-function makeHole(hole, presentation, number) {
-  const node = button("", () => {
-    activeHole = activeHole?.id === hole.id ? null : hole;
+function cancelTap() {
+  if (!pendingTap) return;
+  clearTimeout(pendingTap.timer);
+  pendingTap = null;
+}
+
+function tapHole(hole, trigger) {
+  if (activeHole?.id !== hole.id) {
+    if (pendingTap) grade("good");
+    activeHole = hole;
+    activeTrigger = trigger;
     updateTicketState();
-  }, "hole " + presentation);
+    return;
+  }
+  if (pendingTap) {
+    grade("again");
+    return;
+  }
+  pendingTap = { timer:setTimeout(() => grade("good"), doubleTapMs) };
+}
+
+function makeHole(hole, presentation, number) {
+  const node = button("", (event) => tapHole(hole, event.currentTarget), "hole " + presentation);
   node.setAttribute("aria-controls", "grading");
   bindings.push({ node, hole, presentation, number });
   return node;
@@ -236,24 +267,60 @@ function imageContent(ticket) {
 
 function writtenContent(ticket) {
   const wrapper = el("div");
-  for (const [row, parts] of ticket.card.text.entries()) {
-    const line = el("p", "", "card-text");
-    parts.forEach((part, column) => {
-      if (column % 2 === 0) {
-        line.append(part);
-        return;
-      }
-      const hole = ticket.target.find((candidate) => candidate.id === "t" + row + "-" + column);
-      if (!hole) line.append(el("span", part, "inline context"));
-      else line.append(makeHole(hole, "inline", ticket.target.indexOf(hole) + 1));
+  const diagram = studyDiagram(ticket.card.id);
+  if (diagram) wrapper.append(diagram);
+  const layout = window.ECG_LAYOUTS[ticket.card.id];
+
+  const appendHole = (parent, id) => {
+    const hole = ticket.holes.find((candidate) => candidate.id === id);
+    const index = ticket.target.indexOf(hole);
+    parent.append(index < 0 ? el("span", hole.answer, "inline context")
+      : makeHole(hole, "inline", index + 1));
+  };
+
+  if (layout) {
+    if (ticket.card.id === "005") wrapper.append(el("p", "比 ＝ V3のST低下量 ÷ ⅢのST上昇量", "ratio-caption"));
+    const table = el("table", "", "recall-table");
+    const header = table.createTHead().insertRow();
+    layout.headers.forEach((label) => {
+      const heading = el("th", label);
+      heading.scope = "col";
+      header.append(heading);
     });
-    wrapper.append(line);
+    const body = table.createTBody();
+    for (const [label, answer] of layout.rows) {
+      const row = body.insertRow();
+      const heading = el("th", label);
+      heading.scope = "row";
+      row.append(heading);
+      const cell = row.insertCell();
+      answer.split(/\[(\d+)\]/).forEach((part, i) => {
+        if (i % 2) appendHole(cell, ticket.holes[Number(part)].id);
+        else cell.append(part);
+      });
+    }
+    wrapper.append(table);
+    if (layout.foot) wrapper.append(el("p", layout.foot, "table-note"));
+  } else {
+    const asList = ticket.card.text.length > 1;
+    const list = asList ? el("ul", "", "recall-list") : wrapper;
+    for (const [row, parts] of ticket.card.text.entries()) {
+      const line = el(asList ? "li" : "p", "", "card-text");
+      parts.forEach((part, column) => {
+        if (column % 2) appendHole(line, "t" + row + "-" + column);
+        else line.append(part);
+      });
+      list.append(line);
+    }
+    if (asList) wrapper.append(list);
   }
   return wrapper;
 }
 
 function renderTicket() {
+  cancelTap();
   activeHole = null;
+  activeTrigger = null;
   lastGrade = null;
   bindings.length = 0;
   const area = $("active-card");
@@ -275,8 +342,8 @@ function renderTicket() {
     el("span", mode === "image" ? (group ? "画像・別の穴" : "画像") : "文章"));
   const content = mode === "image" ? imageContent(ticket) : writtenContent(ticket);
   const actions = el("div", "", "card-actions");
-  const reference = button("元画像", () => viewReferences([card]), "");
-  reference.hidden = !picture(card);
+  const reference = button("出典画像", () => viewReferences([card]), "source-link");
+  reference.hidden = !metadata[card.id] && !picture(card);
   const compare = button("比較する", () => viewReferences([card, ...allCards().filter((candidate) =>
     card.compare.includes(candidate.id))]), "");
   compare.hidden = true;
@@ -292,7 +359,8 @@ function renderTicket() {
     nextTicket();
   });
   change.hidden = true;
-  actions.append(reference, compare, change);
+  meta.append(reference);
+  actions.append(compare, change);
   const point = el("div", "", "point");
   point.append(el("strong", "判読のポイント"), card.note || "元画像で答えの位置を確認できます。");
   point.hidden = true;
@@ -353,9 +421,15 @@ function updateBars() {
     && note.includes(hole.answer));
   $("grade-note").hidden = !note || leaks;
   $("grade-note").textContent = note;
+  // Dock away from the last tap so it stays available for the grading gesture.
+  const height = $("grading").getBoundingClientRect().height;
+  const low = activeTrigger && activeTrigger.getBoundingClientRect().bottom > innerHeight - height - 8;
+  $("grading").classList.toggle("dock-top", Boolean(low));
+  $("undo-bar").classList.toggle("dock-top", Boolean(low));
 }
 
 function grade(result) {
+  cancelTap();
   if (!activeHole) return;
   const ticket = ticketNow();
   const hole = activeHole;
@@ -410,10 +484,30 @@ function viewReferences(cards) {
         if (!expanded) viewport.scrollLeft = 0;
       });
       entry.append(zoom, viewport);
-    } else entry.append(el("p", "画像セットを読み込むと元画像が表示されます。", "muted"));
+    } else {
+      const status = el("p", "出典画像 " + card.id + "。画像セットか、この番号の画像を選んでください。", "muted");
+      status.setAttribute("role", "status");
+      const picker = el("input");
+      picker.type = "file";
+      picker.accept = ".json,.png,.jpg,.jpeg,image/jpeg,image/png";
+      picker.multiple = true;
+      const field = el("label", "出典画像を読み込む");
+      field.append(picker);
+      picker.addEventListener("change", async (event) => {
+        status.textContent = "読み込み中…";
+        picker.disabled = true;
+        await importImages(event);
+        if (picture(card) && $("viewer").open) viewReferences(cards);
+        else {
+          status.textContent = $("images-state").textContent;
+          picker.disabled = false;
+        }
+      });
+      entry.append(status, field);
+    }
     body.append(entry);
   }
-  $("viewer").showModal();
+  if (!$("viewer").open) $("viewer").showModal();
 }
 
 function openDatabase() {
@@ -692,13 +786,14 @@ $("setup-form").addEventListener("submit", begin);
 $("home").addEventListener("click", home);
 $("correct").addEventListener("click", () => grade("good"));
 $("wrong").addEventListener("click", () => grade("again"));
-$("close-grade").addEventListener("click", () => { activeHole = null; updateTicketState(); });
+$("close-grade").addEventListener("click", () => { cancelTap(); activeHole = null; updateTicketState(); });
 $("undo").addEventListener("click", undo);
 $("scope").addEventListener("change", updateSetup);
 $("category").addEventListener("change", updateSetup);
 $("kind").addEventListener("change", updateSetup);
 $("search").addEventListener("input", updateSetup);
-$("review-rule").value = read(ruleKey, "spaced") === "quick" ? "quick" : "spaced";
+const savedRule = read(ruleKey, "intensive");
+$("review-rule").value = ["intensive", "spaced", "quick"].includes(savedRule) ? savedRule : "intensive";
 $("review-rule").addEventListener("change", () => { save(ruleKey, $("review-rule").value); updateSetup(); });
 $("import-images").addEventListener("change", importImages);
 $("edit").addEventListener("click", beginEditor);
@@ -713,6 +808,8 @@ $("editor").addEventListener("close", () => {
 migrateSample();
 refreshCategories();
 restoreImages().catch(() => {});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !session) updateSetup(); });
+setInterval(() => { if (!session && !document.hidden && !$("settings").open) updateSetup(); }, 30_000);
 if ("serviceWorker" in navigator && location.protocol !== "file:" && !window.ECG_PRIVATE_IMAGES) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }

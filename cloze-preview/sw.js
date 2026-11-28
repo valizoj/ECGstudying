@@ -1,7 +1,8 @@
 "use strict";
 
-const cacheName = "ecg-cloze-v2";
+const cacheName = "ecg-cloze-v3";
 const assets = ["./", "./index.html", "./study.css", "./study.js", "./deck.js", "./image-meta.js",
+  "./layouts.js", "./diagrams.js", "./figures/005-st-measure.webp",
   "./manifest.webmanifest", "../icons/192.png", "../icons/512.png", "../icons/apple.png",
   ...["003", "009", "024", "049"].map((id) => "./sample-images/" + id + ".jpg")];
 const urls = new Set(assets.map((path) => new URL(path, self.registration.scope).href));
